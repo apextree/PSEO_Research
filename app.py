@@ -342,28 +342,60 @@ with tab2:
             sankey_data['source_node'] = sankey_data['Major Name']
             # target_node is already the Geography (State or Division)
         
-        # SCENARIO D: NEITHER (Employment Status)
-        # Major -> Employed vs NO or very lerss earnings observed
+        # SCENARIO D: NEITHER (Earnings vs No Earnings)
+
         else:
-            # 1. Separate the NME (No Earnings) rows
-            # This assumes your updated cleanup script labeled the target as "No or very less earnings observed"
-            nme_label = "No or very less earnings observed"
-            nme_data = filtered_flow[filtered_flow['target_node'] == nme_label].copy()
+
+            # 1. Get total employed count for the cohort
+
+            # We filter for only the rows where Source is a Major to avoid double counting
+
+            major_flows = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])]
+
             
-            # 2. Aggregate all Industry flows into a single "Employed" category
-            # We filter for 'Leg 1' flows (Major -> Industry) that are NOT the NME label
-            emp_data = filtered_flow[
-                (filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])) & 
-                (filtered_flow['target_node'] != nme_label)
-            ].copy()
-            
-            if not emp_data.empty:
-                # Group by source to collapse all industries into one flow
-                emp_data = emp_data.groupby(['source_node', 'Major Name', 'cohort_label', 'Degree Label'])[flow_col].sum().reset_index()
-                emp_data['target_node'] = "Employed (Earnings Observed)"
-            
-            # Combine them for the Sankey view
-            sankey_data = pd.concat([nme_data, emp_data], ignore_index=True)
+
+            # 2. Build a custom dataframe for this view
+
+            summary_rows = []
+
+            for major in major_flows['source_node'].unique():
+
+                m_data = major_flows[major_flows['source_node'] == major]
+
+                emp_count = m_data[flow_col].sum()
+
+                # Get NME count (it's repeated on every row, so we just take the first)
+
+                nme_col = f'{time_code}_grads_nme'
+
+                nme_count = m_data[nme_col].iloc[0] if not m_data.empty else 0
+
+                
+
+                # Add 'Employed' flow
+
+                summary_rows.append({
+
+                    'source_node': major, 
+
+                    'target_node': 'Employed (Earnings Observed)', 
+
+                    flow_col: emp_count
+
+                })
+
+                # Add 'No Earnings' flow
+
+                summary_rows.append({
+
+                    'source_node': major, 
+
+                    'target_node': 'No or very less earnings observed', 
+
+                    flow_col: nme_count
+
+                })
+            sankey_data = pd.DataFrame(summary_rows)
 
         # 5. AGGREGATION
         agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
