@@ -343,12 +343,27 @@ with tab2:
             # target_node is already the Geography (State or Division)
         
         # SCENARIO D: NEITHER (Employment Status)
-        # Major -> Employment Status
+        # Major -> Employed vs NO or very lerss earnings observed
         else:
-            # We create a simple view: Degree -> "Employed"
-            # (Note: Current data only tracks employed, so this is a single bar, but meets the logic requirement)
-            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
-            sankey_data['target_node'] = "Employed Graduates"
+            # 1. Separate the NME (No Earnings) rows
+            # This assumes your updated cleanup script labeled the target as "No or very less earnings observed"
+            nme_label = "No or very less earnings observed"
+            nme_data = filtered_flow[filtered_flow['target_node'] == nme_label].copy()
+            
+            # 2. Aggregate all Industry flows into a single "Employed" category
+            # We filter for 'Leg 1' flows (Major -> Industry) that are NOT the NME label
+            emp_data = filtered_flow[
+                (filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])) & 
+                (filtered_flow['target_node'] != nme_label)
+            ].copy()
+            
+            if not emp_data.empty:
+                # Group by source to collapse all industries into one flow
+                emp_data = emp_data.groupby(['source_node', 'Major Name', 'cohort_label', 'Degree Label'])[flow_col].sum().reset_index()
+                emp_data['target_node'] = "Employed (Earnings Observed)"
+            
+            # Combine them for the Sankey view
+            sankey_data = pd.concat([nme_data, emp_data], ignore_index=True)
 
         # 5. AGGREGATION
         agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
