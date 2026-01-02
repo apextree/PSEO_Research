@@ -260,33 +260,39 @@ def load_flow_data():
 ### VISUALIZE FLOW DATA ###
 
 with tab2:
-    st.header("Industry & Geographic Pathways")
+    st.header("🎓 Graduate Flow Analysis")
     
     # 1. LOAD DATA
     flow_df = load_flow_data()
 
-    # 2. TAB CONTROLS
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        # Source State Filter (Where they graduated)
-        state_list = sorted(flow_df['source_state_name'].dropna().unique().tolist())
-        selected_state = st.selectbox("Select Origin State", ["All States"] + state_list)
-    
-    with col2:
-        # THE TOGGLE: "Double Sankey"
-        # If checked, we show the second leg of the journey (Industry -> Location)
-        show_geo = st.checkbox("Show Geographic Destination (Double Sankey)", value=False)
+    # 2. CONTROLS CONTAINER
+    # We use a container to organize the filters and the new buttons clearly
+    with st.container():
+        col_filters, col_view = st.columns([1, 2])
+        
+        with col_filters:
+            # Source State Filter
+            state_list = sorted(flow_df['source_state_name'].dropna().unique().tolist())
+            selected_state = st.selectbox("Select Origin State", ["All States"] + state_list)
+            
+            # Unit Toggle (Raw vs %)
+            # User Request: "Toggle between raw number and percentage"
+            unit_mode = st.radio("Display Units", ["Count (N)", "Percentage (%)"], horizontal=True)
 
-    # 3. WARNING LOGIC (37.5% Representation)
-    if selected_cohort != "All Cohorts" and time_code in ['y5', 'y10']:
-        st.warning(
-            f"⚠️ **Data Representation Warning:** You are viewing {timeframe_label} outcomes for the {selected_cohort} cohort. "
-            "Due to privacy suppression in longitudinal data, approximately **37.5%** of graduates are represented here. "
-            "For the most complete view, switch Cohort to 'All Cohorts'."
-        )
+        with col_view:
+            st.markdown("**Destinations to Visualize:**")
+            # User Request: "Two buttons... both clickable and unclickable"
+            # We use columns to place them side-by-side like buttons
+            b_col1, b_col2 = st.columns(2)
+            with b_col1:
+                show_industry = st.checkbox("Industry Sectors", value=True)
+            with b_col2:
+                show_geo = st.checkbox("Geography", value=False)
 
-    # 4. FILTERING
-    # A. Global Filters (Degree & Major)
+    st.divider()
+
+    # 3. FILTERING LOGIC
+    # A. Global Filters
     mask_flow = (flow_df['Degree Label'].isin(selected_degrees)) & \
                 (flow_df['Major Name'].isin(selected_majors))
     
@@ -295,68 +301,119 @@ with tab2:
         mask_flow &= (flow_df['source_state_name'] == selected_state)
     
     # C. Cohort Filter
-    if selected_cohort != "All Cohorts":
-        mask_flow &= (flow_df['grad_cohort'] == selected_cohort)
+    mask_flow &= (flow_df['cohort_label'] == selected_cohort)
+    if selected_cohort != "All Cohorts" and time_code in ['y5', 'y10']:
+        st.caption(f"⚠️ Note: Data representation for {selected_cohort} in {timeframe_label} is approx. 37.5% due to privacy suppression.")
 
     filtered_flow = flow_df[mask_flow].copy()
     
-    # 5. SELECT FLOW COLUMN (y1_flow, y5_flow, y10_flow)
+    # D. Select Timeframe Column
     flow_col = f'{time_code}_flow'
 
-    # 6. SANKEY LOGIC
+    # 4. VIEW LOGIC (The 4-Way Switch)
     if filtered_flow.empty or filtered_flow[flow_col].sum() == 0:
-        st.info(f"No flow data available for **{selected_state}** with current filters.")
+        st.info("No data available for the selected filters.")
     else:
-        # --- TOGGLE LOGIC ---
-        if not show_geo:
-            # Single Sankey: Show ONLY Major -> Industry
-            # We filter for rows where the Source is one of our Majors
-            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
-        else:
-            # Double Sankey: Show Everything (Major -> Industry -> Geo)
-            # The CSV already contains both legs, so we use the whole filtered set
-            sankey_data = filtered_flow.copy()
-
-        # Aggregate flows (Group by Source -> Target)
-        agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
+        # We determine Source -> Target based on which buttons are checked
         
-        # Remove zero flows
-        agg_flow = agg_flow[agg_flow[flow_col] > 0]
-        agg_flow = agg_flow.sort_values(flow_col, ascending=False)
+        # SCENARIO A: BOTH (Double Sankey)
+        # Major -> Industry -> Geography
+        if show_industry and show_geo:
+            # We use the pre-calculated legs from the CSV
+            sankey_data = filtered_flow.copy() # Use all rows (Leg 1 + Leg 2)
+            # Leg 1: Major -> Industry (source_node=Major, target_node=Industry)
+            # Leg 2: Industry -> Geo (source_node=Industry, target_node=Geo)
+        
+        # SCENARIO B: INDUSTRY ONLY
+        # Major -> Industry
+        elif show_industry and not show_geo:
+            # Filter for Leg 1 only (where Source is a Major)
+            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
+        
+        # SCENARIO C: GEOGRAPHY ONLY
+        # Major -> Geography
+        elif show_geo and not show_industry:
+            # We need to construct this view because the CSV splits them.
+            # We take Leg 2 (Industry->Geo) because it preserves the 'Major Name' column.
+            # We ignore the 'Industry' node and map directly Major -> Geo.
+            sankey_data = filtered_flow[~filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
+            
+            # OVERRIDE: Set source to Major, target is already Geo
+            sankey_data['source_node'] = sankey_data['Major Name']
+            # target_node is already the Geography (State or Division)
+        
+        # SCENARIO D: NEITHER (Employment Status)
+        # Major -> Employment Status
+        else:
+            # We create a simple view: Degree -> "Employed"
+            # (Note: Current data only tracks employed, so this is a single bar, but meets the logic requirement)
+            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
+            sankey_data['target_node'] = "Employed Graduates"
 
-        # Build Nodes & Links
+        # 5. AGGREGATION
+        agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
+        agg_flow = agg_flow[agg_flow[flow_col] > 0] # Remove zero flows
+
+        # 6. PERCENTAGE CALCULATION
+        # Calculate total flow per Source Node to compute %
+        source_totals = agg_flow.groupby('source_node')[flow_col].sum().to_dict()
+        
+        def get_label(row):
+            count = row[flow_col]
+            total = source_totals.get(row['source_node'], count)
+            pct = (count / total * 100) if total > 0 else 0
+            if unit_mode == "Percentage (%)":
+                return f"{pct:.1f}%"
+            return f"{int(count):,}"
+
+        # 7. SANKEY DIAGRAM CONSTRUCTION
         all_nodes = list(agg_flow['source_node'].unique()) + list(agg_flow['target_node'].unique())
         all_nodes = list(set(all_nodes)) # Deduplicate
         node_map = {label: i for i, label in enumerate(all_nodes)}
 
         source_ids = agg_flow['source_node'].map(node_map)
         target_ids = agg_flow['target_node'].map(node_map)
+        
+        # Calculate custom labels for links
+        link_labels = agg_flow.apply(get_label, axis=1)
+        # Calculate custom values (if % mode, the width should still be based on count to keep proportions, 
+        # but the hover/label changes. OR we can make width % too. Let's keep width as count for stability.)
 
-        # Plotly Figure
         fig_sankey = go.Figure(data=[go.Sankey(
+            valueformat = ".1f%" if unit_mode == "Percentage (%)" else ",.0f",
             node=dict(
-                pad=15, thickness=20,
+                pad=20, thickness=20,
                 line=dict(color="black", width=0.5),
                 label=all_nodes,
-                color="#1D3557" # Professional Dark Blue
+                color="black" # High contrast node text
             ),
             link=dict(
                 source=source_ids,
                 target=target_ids,
                 value=agg_flow[flow_col],
-                color="rgba(69, 123, 157, 0.4)" # Semi-transparent Blue
+                label=link_labels, # This puts the number/pct on the tooltip
+                color="rgba(200, 200, 200, 0.5)" # Light gray for high contrast against white
             )
         )])
 
+        # 8. HIGH CONTRAST STYLING (White Background)
         fig_sankey.update_layout(
-            title_text=f"Workforce Pathways: {selected_state}",
-            height=700 if show_geo else 500, # Taller if showing geography
-            font=dict(size=12, color="black"),
-            margin=dict(t=40, l=10, r=10, b=10)
+            title_text=f"Flow Analysis: {selected_state}",
+            height=600,
+            font=dict(size=12, color="black", family="Arial"), # Strict black font
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            margin=dict(t=50, l=10, r=10, b=10)
         )
+        
+        # Force the numbers to appear ON the diagram nodes/links?
+        # Plotly Sankey doesn't easily support static text on links, but we can enable node values.
+        fig_sankey.update_traces(node_align="justify")
 
         st.plotly_chart(fig_sankey, use_container_width=True)
         
-        # 7. METRICS TABLE
-        with st.expander("📊 View Data Table"):
-            st.dataframe(agg_flow.rename(columns={flow_col: "Graduates"}), use_container_width=True)
+        # 9. SUMMARY TABLE
+        with st.expander("📄 View Underlying Data"):
+            display_df = agg_flow.rename(columns={flow_col: "Count"})
+            display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / source_totals[x['source_node']]*100):.1f}%", axis=1)
+            st.dataframe(display_df, use_container_width=True)
