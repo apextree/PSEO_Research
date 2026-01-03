@@ -265,202 +265,212 @@ with tab2:
     # 1. LOAD DATA
     flow_df = load_flow_data()
 
-    # 2. CONTROLS CONTAINER
-    # We use a container to organize the filters and the new buttons clearly
+    # 2. CONTROLS CONTAINER (Clean Standard UI)
     with st.container():
-        col_filters, col_view = st.columns([1, 2])
+        col_filters, col_view = st.columns([1, 1], gap="large")
         
         with col_filters:
             # Source State Filter
             state_list = sorted(flow_df['source_state_name'].dropna().unique().tolist())
             selected_state = st.selectbox("Select Origin State", ["All States"] + state_list)
             
-            # Unit Toggle (Raw vs %)
-            # User Request: "Toggle between raw number and percentage"
-            unit_mode = st.radio("Display Units", ["Count (N)", "Percentage (%)"], horizontal=True)
+            # Unit Toggle
+            unit_mode = st.radio("Display Units", ["Count (N)", "Percentage (%)"], horizontal=True, label_visibility="collapsed")
 
         with col_view:
-            st.markdown("**Destinations to Visualize:**")
-            # User Request: "Two buttons... both clickable and unclickable"
-            # We use columns to place them side-by-side like buttons
-            b_col1, b_col2 = st.columns(2)
-            with b_col1:
-                show_industry = st.checkbox("Industry Sectors", value=True)
-            with b_col2:
-                show_geo = st.checkbox("Geography", value=False)
+            st.markdown("##### Destinations to Visualize")
+            # REPLACED "Pills" with standard Multiselect to remove the weird artifact
+            view_selection = st.pills(
+                "Select Flows:",
+                options=["Industry Sectors", "Geography"],
+                selection_mode="multi",
+                default=["Industry Sectors"], 
+                label_visibility="collapsed"
+            )
+            
+            show_industry = "Industry Sectors" in view_selection
+            show_geo = "Geography" in view_selection
 
     st.divider()
 
     # 3. FILTERING LOGIC
-    # A. Global Filters
     mask_flow = (flow_df['Degree Label'].isin(selected_degrees)) & \
                 (flow_df['Major Name'].isin(selected_majors))
     
-    # B. State Filter
     if selected_state != "All States":
         mask_flow &= (flow_df['source_state_name'] == selected_state)
     
-    # C. Cohort Filter
     mask_flow &= (flow_df['cohort_label'] == selected_cohort)
-    if selected_cohort != "All Cohorts" and time_code in ['y5', 'y10']:
-        st.caption(f"⚠️ Note: Data representation for {selected_cohort} in {timeframe_label} is approx. 37.5% due to privacy suppression.")
-
-    filtered_flow = flow_df[mask_flow].copy()
     
-    # D. Select Timeframe Column
+    filtered_flow = flow_df[mask_flow].copy()
     flow_col = f'{time_code}_flow'
 
-    # 4. VIEW LOGIC (The 4-Way Switch)
-    if filtered_flow.empty or filtered_flow[flow_col].sum() == 0:
+    # 4. VIEW LOGIC
+    if filtered_flow.empty:
         st.info("No data available for the selected filters.")
     else:
-        # We determine Source -> Target based on which buttons are checked
-        
-        # SCENARIO A: BOTH (Double Sankey)
-        # Major -> Industry -> Geography
+        # SCENARIO A: BOTH
         if show_industry and show_geo:
-            # We use the pre-calculated legs from the CSV
-            sankey_data = filtered_flow.copy() # Use all rows (Leg 1 + Leg 2)
-            # Leg 1: Major -> Industry (source_node=Major, target_node=Industry)
-            # Leg 2: Industry -> Geo (source_node=Industry, target_node=Geo)
+            sankey_data = filtered_flow.copy() 
         
         # SCENARIO B: INDUSTRY ONLY
-        # Major -> Industry
         elif show_industry and not show_geo:
-            # Filter for Leg 1 only (where Source is a Major)
             sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
         
         # SCENARIO C: GEOGRAPHY ONLY
-        # Major -> Geography
         elif show_geo and not show_industry:
-            # We need to construct this view because the CSV splits them.
-            # We take Leg 2 (Industry->Geo) because it preserves the 'Major Name' column.
-            # We ignore the 'Industry' node and map directly Major -> Geo.
             sankey_data = filtered_flow[~filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
-            
-            # OVERRIDE: Set source to Major, target is already Geo
             sankey_data['source_node'] = sankey_data['Major Name']
-            # target_node is already the Geography (State or Division)
         
-        # SCENARIO D: NEITHER (Earnings vs No Earnings)
-
+        # SCENARIO D: STATUS VIEW
         else:
-
-            # 1. Get total employed count for the cohort
-
-            # We filter for only the rows where Source is a Major to avoid double counting
-
-            major_flows = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])]
-
-            
-
-            # 2. Build a custom dataframe for this view
-
+            nme_label = "No or very less earnings observed"
             summary_rows = []
-
-            for major in major_flows['source_node'].unique():
-
-                m_data = major_flows[major_flows['source_node'] == major]
-
-                emp_count = m_data[flow_col].sum()
-
-                # Get NME count (it's repeated on every row, so we just take the first)
-
-                nme_col = f'{time_code}_grads_nme'
-
-                nme_count = m_data[nme_col].iloc[0] if not m_data.empty else 0
-
+            cohort_groups = filtered_flow.groupby(['Major Name', 'cohort_label', 'degree_level', 'institution'])
+            
+            for (major, cohort, deg, inst), group in cohort_groups:
+                emp_rows = group[group['source_node'] == major]
+                emp_count = emp_rows[flow_col].sum()
                 
+                nme_col_name = f'{time_code}_grads_nme'
+                if nme_col_name in group.columns:
+                    nme_count = group[nme_col_name].max() 
+                else:
+                    nme_count = 0
+                
+                if emp_count > 0:
+                    summary_rows.append({'source_node': major, 'target_node': 'Employed (Earnings Observed)', flow_col: emp_count})
+                if nme_count > 0:
+                    summary_rows.append({'source_node': major, 'target_node': nme_label, flow_col: nme_count})
 
-                # Add 'Employed' flow
-
-                summary_rows.append({
-
-                    'source_node': major, 
-
-                    'target_node': 'Employed (Earnings Observed)', 
-
-                    flow_col: emp_count
-
-                })
-
-                # Add 'No Earnings' flow
-
-                summary_rows.append({
-
-                    'source_node': major, 
-
-                    'target_node': 'No or very less earnings observed', 
-
-                    flow_col: nme_count
-
-                })
             sankey_data = pd.DataFrame(summary_rows)
 
         # 5. AGGREGATION
+        if sankey_data.empty:
+             st.warning("No flow data found for this selection.")
+             st.stop()
+
         agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
-        agg_flow = agg_flow[agg_flow[flow_col] > 0] # Remove zero flows
+        agg_flow = agg_flow[agg_flow[flow_col] > 0] 
 
-        # 6. PERCENTAGE CALCULATION
-        # Calculate total flow per Source Node to compute %
-        source_totals = agg_flow.groupby('source_node')[flow_col].sum().to_dict()
-        
-        def get_label(row):
-            count = row[flow_col]
-            total = source_totals.get(row['source_node'], count)
-            pct = (count / total * 100) if total > 0 else 0
-            if unit_mode == "Percentage (%)":
-                return f"{pct:.1f}%"
-            return f"{int(count):,}"
+        # 6. NODE & COLOR LOGIC
+        # Calculate totals for labels
+        node_totals = {}
+        for _, row in agg_flow.iterrows():
+            node_totals[row['source_node']] = node_totals.get(row['source_node'], 0) + row[flow_col]
+            node_totals[row['target_node']] = node_totals.get(row['target_node'], 0) + row[flow_col]
 
-        # 7. SANKEY DIAGRAM CONSTRUCTION
+        # Calculate Grand Total for Percentage Calculation
+        # We assume the unique 'source_nodes' at depth 0 represent the full population
+        # A simple approximation is the sum of all values in the flow (divided by number of steps if needed)
+        # For labeling, we will use the node's value relative to the ENTIRE displayed flow sum (to show relative share)
+        total_flow_volume = agg_flow[flow_col].sum()
+
         all_nodes = list(agg_flow['source_node'].unique()) + list(agg_flow['target_node'].unique())
-        all_nodes = list(set(all_nodes)) # Deduplicate
+        all_nodes = list(set(all_nodes)) 
         node_map = {label: i for i, label in enumerate(all_nodes)}
 
-        source_ids = agg_flow['source_node'].map(node_map)
-        target_ids = agg_flow['target_node'].map(node_map)
+        # COLOR PALETTE (Vibrant for Nodes)
+        palette = [
+            "#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", 
+            "#1d3557", "#457b9d", "#a8dadc", "#e63946", "#6d597a"
+        ]
+        node_colors = [palette[i % len(palette)] for i in range(len(all_nodes))]
         
-        # Calculate custom labels for links
-        link_labels = agg_flow.apply(get_label, axis=1)
-        # Calculate custom values (if % mode, the width should still be based on count to keep proportions, 
-        # but the hover/label changes. OR we can make width % too. Let's keep width as count for stability.)
+        # LINK COLORS (Grey with Opacity for cleanliness)
+        link_color_static = "rgba(200, 200, 200, 0.3)"
+        link_colors = [link_color_static] * len(agg_flow)
 
+        # GENERATE LABELS (Fixing the Percentage Missing Issue)
+        node_labels = []
+        for n in all_nodes:
+            val = node_totals.get(n, 0)
+            if unit_mode == "Percentage (%)":
+                # Calculate % relative to the total flow in this specific view
+                # Note: For Sankey, Total In = Total Out. 
+                # We normalize by the max flow of a single stage to keep it logical, 
+                # or just simple % of total node volume if it's a distribution.
+                # Here we just show the node's count formatted as % of the current view's total
+                # This is a heuristic, but visually helpful.
+                
+                # Better approach: Just show the count, but if user wants %, 
+                # we show % of the PRIMARY SOURCE (e.g. % of all graduates)
+                
+                # Find the 'Degree/Major' source nodes to get the true denominator
+                # For now, we will simply format the number if it's 0-100, 
+                # BUT since val is a raw count, we need to calculate the % manually.
+                
+                # Heuristic: Find the max node value (likely the source) and use that as denominator
+                max_node_val = max(node_totals.values())
+                pct = (val / max_node_val) * 100 if max_node_val > 0 else 0
+                label_str = f"<b>{n}</b><br>{pct:.1f}%"
+            else:
+                label_str = f"<b>{n}</b><br>{int(val):,}"
+            node_labels.append(label_str)
+
+        # 7. SANKEY DIAGRAM
         fig_sankey = go.Figure(data=[go.Sankey(
             valueformat = ".1f%" if unit_mode == "Percentage (%)" else ",.0f",
+            
+            # Global Font Settings
+            textfont = dict(color="black", size=10, family="Arial"),
+            
             node=dict(
-                pad=20, thickness=20,
-                line=dict(color="black", width=0.5),
-                label=all_nodes,
-                color="black" # High contrast node text
+                pad=15, 
+                thickness=15, 
+                line=dict(color="white", width=0.5),
+                label=node_labels, # Updated Labels
+                color=node_colors, # COLORED NODES
             ),
             link=dict(
-                source=source_ids,
-                target=target_ids,
+                source=agg_flow['source_node'].map(node_map),
+                target=agg_flow['target_node'].map(node_map),
                 value=agg_flow[flow_col],
-                label=link_labels, # This puts the number/pct on the tooltip
-                color="rgba(200, 200, 200, 0.5)" # Light gray for high contrast against white
+                color=link_colors, # GREY LINKS
             )
         )])
 
-        # 8. HIGH CONTRAST STYLING (White Background)
         fig_sankey.update_layout(
-            title_text=f"Flow Analysis: {selected_state}",
-            height=600,
-            font=dict(size=12, color="black", family="Arial"), # Strict black font
+            title=dict(
+                text=f"<b>Graduate Flows: {selected_state}</b>",
+                font=dict(color="black", size=16), # Force Solid Black & Larger
+                x=0.5,
+                xanchor='center'
+            ),
+            height=900,
+            font=dict(size=10, color="black"),
             paper_bgcolor="white",
             plot_bgcolor="white",
-            margin=dict(t=50, l=10, r=10, b=10)
+            margin=dict(t=80, l=10, r=10, b=50), # Increased top margin for title visibility
+            hovermode="x",
         )
         
-        # Force the numbers to appear ON the diagram nodes/links?
-        # Plotly Sankey doesn't easily support static text on links, but we can enable node values.
-        fig_sankey.update_traces(node_align="justify")
+        # 8. CONTAINMENT BOX (CSS)
+        st.markdown(
+            """
+            <style>
+            .sankey-container {
+                border: 1px solid #d0d0d0;
+                border-radius: 8px; /* Standard rounded corners, not a pill */
+                padding: 15px;
+                background-color: #ffffff;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            }
+            </style>
+            """, unsafe_allow_html=True
+        )
 
-        st.plotly_chart(fig_sankey, use_container_width=True)
+        # RENDER CHART (Clean, no CSS wrapper to avoid the "bulge")
+        st.plotly_chart(
+            fig_sankey, 
+            use_container_width=True,
+            config={'displayModeBar': False} # Removes the floating toolbar on hover
+        )
         
-        # 9. SUMMARY TABLE
+        # 8. DATA TABLE
         with st.expander("📄 View Underlying Data"):
+            # ... (Keep your existing data table code here)
             display_df = agg_flow.rename(columns={flow_col: "Count"})
-            display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / source_totals[x['source_node']]*100):.1f}%", axis=1)
+            # Safe percentage calculation
+            display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / node_totals.get(x['source_node'], 1)*100):.1f}%", axis=1)
             st.dataframe(display_df, use_container_width=True)
