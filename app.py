@@ -345,7 +345,7 @@ with tab2:
 
             sankey_data = pd.DataFrame(summary_rows)
 
-        # 5. AGGREGATION
+        # 5. AGGREGATION & COLORING
         if sankey_data.empty:
              st.warning("No flow data found for this selection.")
              st.stop()
@@ -353,59 +353,80 @@ with tab2:
         agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
         agg_flow = agg_flow[agg_flow[flow_col] > 0] 
 
-        # 6. NODE & COLOR LOGIC
-        # Calculate totals for labels
+        # 6. NODE LOGIC: ROBUST LAYERED SORTING
+        # Calculate totals for sizing
         node_totals = {}
         for _, row in agg_flow.iterrows():
             node_totals[row['source_node']] = node_totals.get(row['source_node'], 0) + row[flow_col]
             node_totals[row['target_node']] = node_totals.get(row['target_node'], 0) + row[flow_col]
 
-        # Calculate Grand Total for Percentage Calculation
-        # We assume the unique 'source_nodes' at depth 0 represent the full population
-        # A simple approximation is the sum of all values in the flow (divided by number of steps if needed)
-        # For labeling, we will use the node's value relative to the ENTIRE displayed flow sum (to show relative share)
-        total_flow_volume = agg_flow[flow_col].sum()
+        # Calculate Grand Total for Percentage (Denominator)
+        major_nodes = ['Education', 'CompSci / AI']
+        major_flows = agg_flow[agg_flow['source_node'].isin(major_nodes)]
+        total_cohort_count = major_flows[flow_col].sum()
+        if total_cohort_count == 0:
+            total_cohort_count = agg_flow[flow_col].sum()
 
-        all_nodes = list(agg_flow['source_node'].unique()) + list(agg_flow['target_node'].unique())
-        all_nodes = list(set(all_nodes)) 
+        # --- FIX: STRICT LAYERED SORTING ---
+        # 1. Identify "Levels" (Columns in the diagram)
+        sources = set(agg_flow['source_node'])
+        targets = set(agg_flow['target_node'])
+        
+        # Level 0: Roots (Start Points -> Majors)
+        level_0 = list(sources - targets) 
+        
+        # Level 1: Intermediates (Industries in double-flow, or empty in single)
+        level_1 = list(sources & targets) 
+        
+        # Level 2: Leaves (End Points -> Geos, NME, or Industries in single flow)
+        level_2 = list(targets - sources) 
+        
+        # 2. Sort Each Level DESCENDING by Magnitude
+        def get_magnitude(n): return node_totals.get(n, 0)
+        
+        level_0.sort(key=get_magnitude, reverse=True)
+        level_1.sort(key=get_magnitude, reverse=True)
+        level_2.sort(key=get_magnitude, reverse=True)
+        
+        # 3. Combine in strict order: Left -> Middle -> Right
+        # This ensures Index 0 is Top-Left, and forces the layout engine to respect the order
+        all_nodes = level_0 + level_1 + level_2
+        
+        # 4. Create Map
         node_map = {label: i for i, label in enumerate(all_nodes)}
+        # --- FIX END ---
 
-        # COLOR PALETTE (Vibrant for Nodes)
+        # COLOR PALETTE
         palette = [
             "#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51", 
             "#1d3557", "#457b9d", "#a8dadc", "#e63946", "#6d597a"
         ]
         node_colors = [palette[i % len(palette)] for i in range(len(all_nodes))]
         
-        # LINK COLORS (Grey with Opacity for cleanliness)
+        # LINK COLORS (Grey with Opacity)
         link_color_static = "rgba(200, 200, 200, 0.3)"
         link_colors = [link_color_static] * len(agg_flow)
 
-        # GENERATE LABELS (Fixing the Percentage Missing Issue)
+        # GENERATE CORRECT LABELS
         node_labels = []
         for n in all_nodes:
-            val = node_totals.get(n, 0)
+            # Determine Value (Outgoing for Sources, Incoming for Targets)
+            if n in level_0:
+                val = agg_flow[agg_flow['source_node'] == n][flow_col].sum()
+            elif n in level_2:
+                val = agg_flow[agg_flow['target_node'] == n][flow_col].sum()
+            else:
+                # Intermediates: Max of In/Out
+                v_in = agg_flow[agg_flow['target_node'] == n][flow_col].sum()
+                v_out = agg_flow[agg_flow['source_node'] == n][flow_col].sum()
+                val = max(v_in, v_out)
+            
             if unit_mode == "Percentage (%)":
-                # Calculate % relative to the total flow in this specific view
-                # Note: For Sankey, Total In = Total Out. 
-                # We normalize by the max flow of a single stage to keep it logical, 
-                # or just simple % of total node volume if it's a distribution.
-                # Here we just show the node's count formatted as % of the current view's total
-                # This is a heuristic, but visually helpful.
-                
-                # Better approach: Just show the count, but if user wants %, 
-                # we show % of the PRIMARY SOURCE (e.g. % of all graduates)
-                
-                # Find the 'Degree/Major' source nodes to get the true denominator
-                # For now, we will simply format the number if it's 0-100, 
-                # BUT since val is a raw count, we need to calculate the % manually.
-                
-                # Heuristic: Find the max node value (likely the source) and use that as denominator
-                max_node_val = max(node_totals.values())
-                pct = (val / max_node_val) * 100 if max_node_val > 0 else 0
+                pct = (val / total_cohort_count) * 100
                 label_str = f"<b>{n}</b><br>{pct:.1f}%"
             else:
                 label_str = f"<b>{n}</b><br>{int(val):,}"
+            
             node_labels.append(label_str)
 
         # 7. SANKEY DIAGRAM
