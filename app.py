@@ -360,6 +360,7 @@ with tab1:
 
         fig_slope.update_xaxes(
             title_text="Annual Earnings ($)",
+            title_font=dict(size=14, color="black", weight="bold"),
             showgrid=True,
             gridcolor="#888888",
             tickformat="$,.0f",
@@ -376,6 +377,33 @@ with tab1:
             text=a.text.split("=")[-1], 
             font=dict(size=16, color="black", weight="bold")
         ))
+
+        # --- ADDING THE EDUCATION CEILING REFERENCE LINE ---
+        
+        # 1. Identify the max earnings for Education at Year 10
+        edu_10yr_data = growth_melted[
+            (growth_melted['Major Family'] == 'Education') & 
+            (growth_melted['Time Milestone'] == '10 Years After')
+        ]
+        
+        if not edu_10yr_data.empty:
+            # We take the max in case there are multiple degree levels selected (e.g., Bachelors and Masters)
+            edu_ceiling_val = edu_10yr_data['Earnings'].max()
+            
+            # 2. Add the horizontal line to the figure
+            fig_slope.add_hline(
+                y=edu_ceiling_val, 
+                line_dash="dot", 
+                line_color="rgba(230, 57, 70, 0.5)", # Semi-opaque red (High contrast)
+                line_width=2,
+                annotation_text=f" Education Ceiling: ${edu_ceiling_val/1000:.1f}k", 
+                annotation_position="top right",
+                annotation_x=2,
+                annotation_font=dict(size=10, color="red", family="Arial Black")
+
+            )
+        
+        # --- END OF REFERENCE LINE LOGIC ---
 
         st.plotly_chart(fig_slope, use_container_width=True)
     else:
