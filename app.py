@@ -281,12 +281,12 @@ with tab1:
     # --- 8. SLOPE OF GROWTH ANALYSIS ---
     # ==========================================
     st.divider()
-    st.subheader("📈 Slope of Growth Analysis")
+    st.subheader("Earnings Visualized Over Time Post Graduation")
     st.markdown("Visualize the trajectory of earnings across the 1, 5, and 10-year milestones.")
 
     # A separate selector for this graph only
     growth_perc_label = st.radio(
-        "Select Earnings Percentile for Growth Plot:",
+        "Select Earnings Percentile",
         options=["25th Percentile (Entry)", "50th Percentile (Median)", "75th Percentile (Top Tier)"],
         index=1,
         horizontal=True,
@@ -386,9 +386,9 @@ with tab1:
     # --- 9. EARNINGS CHANGE ANALYSIS ---
     # ==========================================
     st.divider()
-    st.subheader("📈 Absolute Earnings Change (Growth Steps)")
+    st.subheader("Growth Rate in Earnings Over Time Post Graduation")
     st.markdown("""
-    This graph shows the **total dollar increase** in earnings between career milestones. 
+    This graph shows the growth rate in earnings between career milestones. 
     It tracks the step-up from Year 1 to Year 5, and the subsequent step-up from Year 5 to Year 10.
     """)
 
