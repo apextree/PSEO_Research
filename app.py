@@ -31,7 +31,7 @@ def load_data(mode):
     # Map Major Codes
     def get_major_family(code):
         if str(code).startswith('13'): return 'Education'
-        if str(code).startswith('11'): return 'CompSci / AI'
+        if str(code).startswith('11'): return 'CompSci'
         return 'Other'
     
     if 'Major Family' not in df.columns:
@@ -46,7 +46,7 @@ def load_data(mode):
 
     df['Degree Label'] = df['degree_level'].astype(str).map(degree_map).fillna(df['degree_level'])
     
-    return df[df['Major Family'].isin(['Education', 'CompSci / AI'])]
+    return df[df['Major Family'].isin(['Education', 'CompSci'])]
 
 
 # --- 2. SIDEBAR FILTERS ---
@@ -76,11 +76,11 @@ selected_degrees = st.sidebar.multiselect(
     default=['Bachelor\'s', 'Master\'s']
 )
 
-available_majors = ['Education', 'CompSci / AI']
+available_majors = ['Education', 'CompSci']
 selected_majors = st.sidebar.multiselect(
     "Select Major(s)",
     options=available_majors,
-    default=['Education', 'CompSci / AI']
+    default=['Education', 'CompSci']
 )
 
 
@@ -109,7 +109,7 @@ else:
     df = df_inst[df_inst['institution'] == selected_inst].copy()
     
     # Map Major Family
-    df['Major Family'] = df['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci / AI')
+    df['Major Family'] = df['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci')
     
     # Map Degrees
     degree_map = {
@@ -582,7 +582,7 @@ with tab1:
         else:
             df_inst_all = pd.read_csv('Earnings_Data/pseoe_institution.csv', dtype={'cipcode': str, 'degree_level': str, 'grad_cohort': str})
             h_raw = df_inst_all[(df_inst_all['institution'] == selected_inst) & (df_inst_all['agg_level_pseo'] == 46)].copy()
-            h_raw['Major Family'] = h_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci / AI')
+            h_raw['Major Family'] = h_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci')
             deg_map_std = {'01':"Certificate <1yr",'03':"Associates",'05':"Bachelor's",'07':"Master's",'17':"Doctoral"}
             h_raw['Degree Label'] = h_raw['degree_level'].astype(str).str.zfill(2).map(deg_map_std)
             cohort_ui = {'2001':'01-03','2004':'04-06','2007':'07-09','2010':'10-12','2013':'13-15','2016':'16-18','2019':'19-21'}
@@ -631,7 +631,7 @@ with tab1:
             text=h_final['Earnings_Val'].apply(lambda x: f"${x/1000:.1f}k"),
             facet_col="Major Family",
             category_orders={
-                "Major Family": ["CompSci / AI", "Education"],
+                "Major Family": ["CompSci", "Education"],
                 "Cohort Label": ["01-03", "04-06", "07-09", "10-12", "13-15", "16-18", "19-21"]
             },
             markers=True,
@@ -718,7 +718,7 @@ with tab1:
     df_top_raw = pd.read_csv('Earnings_Data/pseoe_institution.csv', dtype={'cipcode': str, 'degree_level': str, 'grad_cohort': str})
     
     # Map Major and Degree
-    df_top_raw['Major Family'] = df_top_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else ('CompSci / AI' if str(x).startswith('11') else 'Other'))
+    df_top_raw['Major Family'] = df_top_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else ('CompSci' if str(x).startswith('11') else 'Other'))
     deg_map_top = {'01':"Certificate <1yr", '02':"Certificate 1-2yrs", '03':"Associates", '05':"Bachelor's", '07':"Master's", '17':"Doctoral"}
     df_top_raw['Degree Label'] = df_top_raw['degree_level'].astype(str).str.zfill(2).map(deg_map_top)
 
@@ -793,8 +793,8 @@ with tab1:
         st.plotly_chart(fig, use_container_width=True, key=f"top10_chart_{key_suffix}")
 
     # RENDER THE TWO FIGURES
-    if "CompSci / AI" in selected_majors:
-        render_top_10_chart("CompSci / AI", "#1D3557", "cs")
+    if "CompSci" in selected_majors:
+        render_top_10_chart("CompSci", "#1D3557", "cs")
         st.write("") # Spacer
 
     if "Education" in selected_majors:
@@ -824,7 +824,7 @@ def load_flow_data():
     df = pd.read_csv('Flow_Data/pseo_double_sankey_ready.csv', dtype={'cipcode': str, 'degree_level': str})
     
     # Map Major Names (Source Nodes)
-    df['Major Name'] = df['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci / AI')
+    df['Major Name'] = df['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci')
     
     # Map Degree Labels
     degree_map = {
@@ -894,11 +894,11 @@ with tab2:
         
         # SCENARIO B: INDUSTRY ONLY
         elif show_industry and not show_geo:
-            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
+            sankey_data = filtered_flow[filtered_flow['source_node'].isin(['Education', 'CompSci'])].copy()
         
         # SCENARIO C: GEOGRAPHY ONLY
         elif show_geo and not show_industry:
-            sankey_data = filtered_flow[~filtered_flow['source_node'].isin(['Education', 'CompSci / AI'])].copy()
+            sankey_data = filtered_flow[~filtered_flow['source_node'].isin(['Education', 'CompSci'])].copy()
             sankey_data['source_node'] = sankey_data['Major Name']
         
         # SCENARIO D: STATUS VIEW
@@ -940,7 +940,7 @@ with tab2:
             node_totals[row['target_node']] = node_totals.get(row['target_node'], 0) + row[flow_col]
 
         # Calculate Grand Total for Percentage (Denominator)
-        major_nodes = ['Education', 'CompSci / AI']
+        major_nodes = ['Education', 'CompSci']
         major_flows = agg_flow[agg_flow['source_node'].isin(major_nodes)]
         total_cohort_count = major_flows[flow_col].sum()
         if total_cohort_count == 0:
@@ -1065,8 +1065,8 @@ with tab2:
             config={'displayModeBar': False}
         )
         
-        # DATA TABLE
-        with st.expander("📄 View Underlying Data"):
-            display_df = agg_flow.rename(columns={flow_col: "Count"})
-            display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / node_totals.get(x['source_node'], 1)*100):.1f}%", axis=1)
-            st.dataframe(display_df, use_container_width=True)
+        # # DATA TABLE
+        # with st.expander("📄 View Underlying Data"):
+        #     display_df = agg_flow.rename(columns={flow_col: "Count"})
+        #     display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / node_totals.get(x['source_node'], 1)*100):.1f}%", axis=1)
+        #     st.dataframe(display_df, use_container_width=True)
