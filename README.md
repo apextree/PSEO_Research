@@ -27,6 +27,4 @@ The data is sourced from the US Census Bureau PSEO earnings files. The following
 ## Data Limitations and Interpretation
 
 * Privacy Suppression: The Census Bureau hides data for programs with small graduate counts to protect student identity. Some institutions may show as having no data for specific cohorts or degree levels.
-* Rounding: All earnings figures are rounded by the Census Bureau to the nearest hundred dollars.
-* Geographic Scope: Outcomes represent where graduates are employed. The data does not account for regional cost of living differences which may impact the perceived value of the earnings listed.
-* Inflation: Earnings are presented in nominal dollars based on the reporting period and are not adjusted for current inflation rates.
+* Due to privacy Suppression, only CIP level 2 could be used for the visualizations as CIP level 4 significantly reduced available data for institutions, degree levels, and cohorts -- especially for flow data.
