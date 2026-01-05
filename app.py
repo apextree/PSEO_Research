@@ -86,18 +86,18 @@ selected_majors = st.sidebar.multiselect(
 
 # --- 3. DATA PREPARATION ---
 
-# NEW: Institution Filter in Sidebar
+# Institution Filter in Sidebar
 try:
     # Use a faster way to get unique institutions
     inst_names = pd.read_csv('Earnings_Data/pseoe_institution.csv', usecols=['institution'])
-    inst_options = ["National (State) Average"] + sorted(inst_names['institution'].unique().tolist())
+    inst_options = ["National Average"] + sorted(inst_names['institution'].unique().tolist())
 except:
-    inst_options = ["National (State) Average"]
+    inst_options = ["National Average"]
 
 selected_inst = st.sidebar.selectbox("Select Institution", inst_options)
 
 # LOGIC: Switch between State Aggregate and Specific Institution
-if selected_inst == "National (State) Average":
+if selected_inst == "National Average":
     if selected_cohort == 'All Cohorts':
         df = load_data("All Cohorts")
     else:
@@ -111,7 +111,7 @@ else:
     # Map Major Family
     df['Major Family'] = df['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci / AI')
     
-    # ROBUST DEGREE MAPPING: Handles both '5' and '05' formats
+    # Map Degrees
     degree_map = {
         '01': "Certificate <1yr", '1': "Certificate <1yr",
         '03': "Associates", '3': "Associates",
@@ -121,7 +121,7 @@ else:
     }
     df['Degree Label'] = df['degree_level'].map(degree_map).fillna(df['degree_level'])
 
-    # ROBUST COHORT FILTERING
+    # Cohort Filtering
     if selected_cohort == 'All Cohorts':
         # Handles both '0' and '0000' representations for "All Cohorts"
         df = df[df['grad_cohort'].isin(['0', '0000'])]
@@ -203,15 +203,13 @@ with tab1:
 
     # --- 5. UNIFIED STYLING (The Fix) ---
 
-    # FIX A: Force Consistent Bar Text (100k format)
-    # This ensures both Left and Right bars show "$50k" instead of "$50000"
+    # Force Consistent Bar Text (100k format)
     fig.update_traces(
         texttemplate='%{y:$.3s}', # "$.2s" means Dollar + 2 sig digits + "SI" suffix (k/M)
         textposition='inside'    # Puts the number on top of the bar
     )
 
-    # FIX B: Target ALL Axes (Plural)
-    # update_xaxes applies to xaxis, xaxis2, xaxis3...
+  
     fig.update_xaxes(
         title_text="",        # Kill the "Degree Label" on BOTH sides
         showline=False,        # Black line at bottom of BOTH sides
@@ -219,7 +217,7 @@ with tab1:
         matches='x'           # Force them to share the same ticks
     )
 
-    # FIX C: Target ALL Y-Axes
+
     fig.update_yaxes(
         title_text="Annual Earnings ($)", 
         title_font=dict(size=14, color="black", weight="bold"),
@@ -231,7 +229,6 @@ with tab1:
         tickfont=dict(size=12, color="black", weight="bold"),    
         matches='y'           # Force them to share the same scale
     )
-
 
 
     # Standard Layout Cleanup
@@ -268,7 +265,7 @@ with tab1:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- 7. SUMMARY TABLE (Fixed Index Error) ---
+    # --- 7. SUMMARY TABLE
     st.markdown("### Detailed Data")
     display_table = agg_df.copy()
     display_table = display_table.rename(columns=metric_map)
@@ -278,7 +275,7 @@ with tab1:
     )
 
     # ==========================================
-    # --- 8. SLOPE OF GROWTH ANALYSIS ---
+    # --- 8. Earnigngs Growth Over Time ---
     # ==========================================
     st.divider()
     st.subheader("Earnings Visualized Over Time Post Graduation")
@@ -309,7 +306,6 @@ with tab1:
         # Aggregate data (useful if multiple CIP codes exist for the same major family)
         growth_plot_df = filtered_df.groupby(['Major Family', 'Degree Label'])[growth_cols].mean().reset_index()
 
-        
         # Melt data for plotting (Transforming columns into a 'Time' category)
         growth_melted = growth_plot_df.melt(
             id_vars=['Major Family', 'Degree Label'],
@@ -318,18 +314,19 @@ with tab1:
             value_name='Earnings'
         )
 
-        # Map raw column names to your requested Y-axis labels
+        # Map raw column names to Y-axis labels
         time_display_map = {
             f'y1_{g_suffix}_earnings': '1 Year After',
             f'y5_{g_suffix}_earnings': '5 Years After',
             f'y10_{g_suffix}_earnings': '10 Years After'
         }
+
         growth_melted['Time Milestone'] = growth_melted['Raw_Time'].map(time_display_map)
         growth_melted['Earnings Label'] = growth_melted['Earnings'].apply(
             lambda x: f"${x/1000:.1f}k" if pd.notnull(x) else ""
         )
 
-        # Create the Slope Graph (Time on Y-Axis as requested)
+        # Create the Slope Graph
         fig_slope = px.line(
             growth_melted,
             x="Time Milestone",
@@ -343,7 +340,7 @@ with tab1:
             height=600
         )
 
-        # Apply High-Contrast Styling (White Chart Area / Black Text)
+        # High-Contrast Styling
         fig_slope.update_layout(
             plot_bgcolor="white",
             paper_bgcolor="white",
@@ -380,7 +377,7 @@ with tab1:
 
         # --- ADDING THE EDUCATION CEILING REFERENCE LINE ---
         
-        # 1. Identify the max earnings for Education at Year 10
+        # Find Max earnings for Education at Year 10
         edu_10yr_data = growth_melted[
             (growth_melted['Major Family'] == 'Education') & 
             (growth_melted['Time Milestone'] == '10 Years After')
@@ -390,7 +387,7 @@ with tab1:
             # We take the max in case there are multiple degree levels selected (e.g., Bachelors and Masters)
             edu_ceiling_val = edu_10yr_data['Earnings'].max()
             
-            # 2. Add the horizontal line to the figure
+            # Add the horizontal line to the figure
             fig_slope.add_hline(
                 y=edu_ceiling_val, 
                 line_dash="dot", 
@@ -420,7 +417,7 @@ with tab1:
     It tracks the step-up from Year 1 to Year 5, and the subsequent step-up from Year 5 to Year 10.
     """)
 
-    # 1. Local Percentile Selector
+    # Local Percentile Selector
     growth_perc_choice = st.radio(
         "Select Percentile for Growth Calculation:",
         options=["25th Percentile (Entry)", "50th Percentile (Median)", "75th Percentile (Top Tier)"],
@@ -475,7 +472,7 @@ with tab1:
 
         change_melted['Label'] = change_melted['Display Value'].apply(label_func)
         
-        # 2. Build Figure
+        # Build Figure
         fig_change = px.line(
             change_melted,
             x="Growth Period",
@@ -489,7 +486,7 @@ with tab1:
             height=600
         )
 
-        # 3. Stagger labels and apply styling
+        # Stagger labels and apply styling
         stagger_positions = ["top left", "top right", "bottom center"]
         for i, trace in enumerate(fig_change.data):
             # Prevents labels for different degrees from stacking on top of each other
@@ -499,7 +496,7 @@ with tab1:
             trace.marker = dict(size=10)
             trace.cliponaxis = False
 
-        # 4. Consolidated Layout Styling
+        # Consolidated Layout Styling
         fig_change.update_layout(
             plot_bgcolor="white",
             paper_bgcolor="white",
@@ -516,7 +513,7 @@ with tab1:
             uniformtext=dict(mode=False) # Prevents Plotly from hiding "clashing" labels
         )
 
-        # 5. Consolidated Y-Axis Styling (Uses 'Display Value' for range)
+        # Consolidated Y-Axis Styling (Uses 'Display Value' for range)
         tick_fmt = "$,.0f" if view_mode == "Absolute ($)" else ".1f%"
         
         fig_change.update_yaxes(
@@ -547,6 +544,263 @@ with tab1:
         ))
 
         st.plotly_chart(fig_change, use_container_width=True)
+
+    # ==========================================
+    # --- 10. LONGITUDINAL HISTORICAL TRENDS ---
+    # ==========================================
+    st.divider()
+    st.subheader("⏳ Historical Trends: Longitudinal Earnings Series")
+    st.markdown("Track the specific performance of degrees across cohorts and post-graduation milestones.")
+
+    # CHART-SPECIFIC CONTROLS
+    h_col1, h_col2 = st.columns(2)
+    with h_col1:
+        h_perc_choice = st.radio(
+            "Select Earnings Percentile:",
+            options=["25th Percentile (Entry)", "50th Percentile (Median)", "75th Percentile (Top Tier)"],
+            index=1, horizontal=True, key="h_trend_perc"
+        )
+        h_suffix = {"25th Percentile (Entry)": "p25", "50th Percentile (Median)": "p50", "75th Percentile (Top Tier)": "p75"}[h_perc_choice]
+
+    with h_col2:
+        h_years_selected = st.multiselect(
+            "Select Post-Graduation Timeframe(s):",
+            options=["1 Year Post-Grad", "5 Years Post-Grad", "10 Years Post-Grad"],
+            default=["1 Year Post-Grad", "5 Years Post-Grad"], key="h_trend_years"
+        )
+    
+    year_map = {"1 Year Post-Grad": "y1", "5 Years Post-Grad": "y5", "10 Years Post-Grad": "y10"}
+    selected_prefixes = [year_map[y] for y in h_years_selected]
+
+    if not h_years_selected:
+        st.warning("Please select at least one timeframe to visualize.")
+    else:
+        # DATA LOADING & CLEANING
+        if selected_inst == "National (State) Average":
+            h_raw = load_data("Trends")
+            h_raw['Cohort Label'] = h_raw['Cohort Group']
+        else:
+            df_inst_all = pd.read_csv('Earnings_Data/pseoe_institution.csv', dtype={'cipcode': str, 'degree_level': str, 'grad_cohort': str})
+            h_raw = df_inst_all[(df_inst_all['institution'] == selected_inst) & (df_inst_all['agg_level_pseo'] == 46)].copy()
+            h_raw['Major Family'] = h_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else 'CompSci / AI')
+            deg_map_std = {'01':"Certificate <1yr",'03':"Associates",'05':"Bachelor's",'07':"Master's",'17':"Doctoral"}
+            h_raw['Degree Label'] = h_raw['degree_level'].astype(str).str.zfill(2).map(deg_map_std)
+            cohort_ui = {'2001':'01-03','2004':'04-06','2007':'07-09','2010':'10-12','2013':'13-15','2016':'16-18','2019':'19-21'}
+            h_raw['Cohort Label'] = h_raw['grad_cohort'].map(cohort_ui)
+
+        # TRANSFORMATION (One line per year per degree)
+        target_cols = [f"{pre}_{h_suffix}_earnings" for pre in selected_prefixes]
+        h_mask = (h_raw['Major Family'].isin(selected_majors)) & (h_raw['Degree Label'].isin(selected_degrees))
+        h_filtered = h_raw[h_mask].copy()
+
+        # Melt the timeframe columns into a single dimension
+        h_melted = h_filtered.melt(
+            id_vars=['Cohort Label', 'Degree Label', 'Major Family'],
+            value_vars=target_cols,
+            var_name='Time_Col',
+            value_name='Earnings_Val'
+        )
+        
+        # Add readable year label
+        h_melted['Year_Label'] = h_melted['Time_Col'].apply(
+            lambda x: 'Yr 10' if 'y10' in x else ('Yr 5' if 'y5' in x else 'Yr 1')
+        )
+        
+        # CREATE THE UNIQUE LINE IDENTIFIER
+        h_melted['Line_ID'] = h_melted['Degree Label'] + " (" + h_melted['Year_Label'] + ")"
+
+        # CUSTOM COLOR MAPPING (Degree-based shades)
+        # 1yr = Darkest, 5yr = Medium, 10yr = Lightest
+        color_map_custom = {
+            "Bachelor's (Yr 1)": "#003049", "Bachelor's (Yr 5)": "#335c67", "Bachelor's (Yr 10)": "#8ecae6",
+            "Master's (Yr 1)": "#780000", "Master's (Yr 5)": "#c1121f", "Master's (Yr 10)": "#ffb3c1",
+            "Doctoral (Yr 1)": "#132a13", "Doctoral (Yr 5)": "#31572c", "Doctoral (Yr 10)": "#90a955",
+            "Certificate <1yr (Yr 1)": "#ffb703", "Certificate <1yr (Yr 5)": "#fb8500", "Certificate <1yr (Yr 10)": "#ffea00",
+            "Associates (Yr 1)": "#3c096c", "Associates (Yr 5)": "#7b2cbf", "Associates (Yr 10)": "#c77dff"
+        }
+
+        h_final = h_melted.groupby(['Cohort Label', 'Line_ID', 'Major Family', 'Degree Label'])['Earnings_Val'].mean().reset_index()
+        h_final = h_final.dropna(subset=['Earnings_Val'])
+
+        # VISUALIZATION
+        fig_hist = px.line(
+            h_final,
+            x="Cohort Label",
+            y="Earnings_Val",
+            color="Line_ID",
+            text=h_final['Earnings_Val'].apply(lambda x: f"${x/1000:.1f}k"),
+            facet_col="Major Family",
+            category_orders={
+                "Major Family": ["CompSci / AI", "Education"],
+                "Cohort Label": ["01-03", "04-06", "07-09", "10-12", "13-15", "16-18", "19-21"]
+            },
+            markers=True,
+            color_discrete_map=color_map_custom,
+            height=650
+        )
+
+        # Styling for contrast and legibility
+        fig_hist.update_traces(
+            textposition='top center',
+            textfont=dict(size=9, color="black", family="Arial Black"),
+            line=dict(width=3),
+            cliponaxis=False
+        )
+
+        fig_hist.update_layout(
+            plot_bgcolor="white", paper_bgcolor="white",
+            margin=dict(t=100, l=80, r=80, b=150),
+            # LEGEND STYLE
+            legend=dict(
+                orientation="h", yanchor="bottom", y=-0.5, xanchor="center", x=0.5,
+                title="", font=dict(color="black", size=11, weight="bold"),
+                bgcolor="rgba(255,255,255,0.8)", bordercolor="black", borderwidth=1
+            )
+        )
+
+        # AXIS STYLE (Force Black Text)
+        fig_hist.update_yaxes(
+            title="Annual Earnings ($)", title_font=dict(color="black", size=14, weight="bold"),
+            gridcolor="#DDDDDD", tickformat="$,.0f", tickfont=dict(color="black", size=12, weight="bold"),
+        )
+        
+        fig_hist.update_xaxes(
+            title="", tickfont=dict(color="black", size=12, weight="bold"),
+            showline=True, linecolor="black"
+        )
+        fig_hist.update_layout(
+            yaxis2 = dict(title="")
+        )
+
+        # FACET HEADERS (Major Name)
+        fig_hist.for_each_annotation(lambda a: a.update(
+            text=a.text.split("=")[-1], 
+            font=dict(size=18, color="black", weight="bold")
+        ))
+
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+    # ==========================================
+    # --- 11. TOP 10 SCHOOLS BY MAJOR ---
+    # ==========================================
+    st.divider()
+    st.header("🏆 Top 10 Performing Institutions")
+    st.markdown("Comparing the highest earners across specific degrees and milestones.")
+
+    # LOCAL CONTROLS (Shared by both figures)
+    top_col1, top_col2, top_col3 = st.columns(3)
+    
+    with top_col1:
+        top_perc = st.radio(
+            "Select Earnings Percentile:",
+            options=["25th Percentile (Entry)", "50th Percentile (Median)", "75th Percentile (Top Tier)"],
+            index=1, horizontal=True, key="top_perc_selector"
+        )
+        t_suffix = {"25th Percentile (Entry)": "p25", "50th Percentile (Median)": "p50", "75th Percentile (Top Tier)": "p75"}[top_perc]
+
+    with top_col2:
+        top_years = st.radio(
+            "Years After Graduation:",
+            options=["1 Year", "5 Years", "10 Years"],
+            index=0, horizontal=True, key="top_years_selector"
+        )
+        t_pre = {"1 Year": "y1", "5 Years": "y5", "10 Years": "y10"}[top_years]
+
+    with top_col3:
+        top_degree = st.selectbox(
+            "Select Degree Level:",
+            options=available_degrees,
+            index=2, # Default to Bachelor's
+            key="top_degree_selector"
+        )
+
+    # DATA PROCESSING
+    df_top_raw = pd.read_csv('Earnings_Data/pseoe_institution.csv', dtype={'cipcode': str, 'degree_level': str, 'grad_cohort': str})
+    
+    # Map Major and Degree
+    df_top_raw['Major Family'] = df_top_raw['cipcode'].apply(lambda x: 'Education' if str(x).startswith('13') else ('CompSci / AI' if str(x).startswith('11') else 'Other'))
+    deg_map_top = {'01':"Certificate <1yr", '02':"Certificate 1-2yrs", '03':"Associates", '05':"Bachelor's", '07':"Master's", '17':"Doctoral"}
+    df_top_raw['Degree Label'] = df_top_raw['degree_level'].astype(str).str.zfill(2).map(deg_map_top)
+
+    # Filter by Cohort (Sidebar)
+    if selected_cohort == 'All Cohorts':
+        df_top = df_top_raw[(df_top_raw['grad_cohort'].isin(['0', '0000'])) & (df_top_raw['agg_level_pseo'] == 40)].copy()
+    else:
+        cohort_map_top = {'2001-2003': '2001', '2004-2006': '2004', '2007-2009': '2007', '2010-2012': '2010', '2013-2015': '2013', '2016-2018': '2016', '2019-2021': '2019'}
+        target_yr = cohort_map_top.get(selected_cohort)
+        df_top = df_top_raw[(df_top_raw['grad_cohort'] == target_yr) & (df_top_raw['agg_level_pseo'] == 46)].copy()
+
+    # Define the metric
+    t_metric = f"{t_pre}_{t_suffix}_earnings"
+
+    # HELPER FUNCTION FOR RENDERING CHARTS
+    def render_top_10_chart(major_name, color_hex, key_suffix):
+        # Filter for specific major and degree
+        chart_data = df_top[(df_top['Major Family'] == major_name) & (df_top['Degree Label'] == top_degree)].copy()
+        chart_data = chart_data.dropna(subset=[t_metric])
+        
+        # Group by institution to collapse multiple sub-program blocks into one
+        # We take the mean (average) of earnings across sub-programs for that school
+        chart_data = chart_data.groupby('institution')[t_metric].mean().reset_index()
+
+        # Now sort and take exactly Top 10 UNIQUE universities
+        chart_data = chart_data.sort_values(by=t_metric, ascending=False).head(10)
+
+        if chart_data.empty:
+            st.info(f"No data available for Top 10 in {major_name} with the selected filters.")
+            return
+
+        st.subheader(f"🚀 Top 10 Schools: {major_name}")
+        
+        # Use 'institution' and the metric for the bar chart
+        fig = px.bar(
+            chart_data,
+            x="institution",
+            y=t_metric,
+            text=chart_data[t_metric].apply(lambda x: f"${x/1000:.1f}k"),
+            height=500,
+            color_discrete_sequence=[color_hex]
+        )
+
+        # Styling: Ensure Pure Black Ticks and Labels
+        fig.update_traces(
+            textposition='inside',
+            textfont=dict(size=13, color="white", family="Arial Black"),
+            marker_line_color='black',
+            marker_line_width=1.5
+        )
+
+        fig.update_layout(
+            plot_bgcolor="white", paper_bgcolor="white",
+            margin=dict(t=40, l=60, r=60, b=150),
+            xaxis=dict(
+                categoryorder='total descending',
+                tickangle=45,
+                tickfont=dict(color="black", size=11, weight="bold"), # Pure Black
+                linecolor="black",
+                title=""
+            ),
+            yaxis=dict(
+                title="Annual Earnings ($)",
+                title_font=dict(color="black", size=14, weight="bold"), # Pure Black
+                gridcolor="#EEEEEE",
+                tickformat="$,.0f",
+                tickfont=dict(color="black", size=12, weight="bold"), # Pure Black
+                linecolor="black"
+            )
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"top10_chart_{key_suffix}")
+
+    # RENDER THE TWO FIGURES
+    if "CompSci / AI" in selected_majors:
+        render_top_10_chart("CompSci / AI", "#1D3557", "cs")
+        st.write("") # Spacer
+
+    if "Education" in selected_majors:
+        render_top_10_chart("Education", "#E63946", "edu")
+
+
 
 #=================================
 # HANDLE AND VISUALIZE FLOW DATA =
@@ -588,10 +842,10 @@ def load_flow_data():
 with tab2:
     st.header("🎓 Graduate Flow Analysis")
     
-    # 1. LOAD DATA
+    # LOAD DATA
     flow_df = load_flow_data()
 
-    # 2. CONTROLS CONTAINER (Clean Standard UI)
+    # CONTROLS CONTAINER (Clean Standard UI)
     with st.container():
         col_filters, col_view = st.columns([1, 1], gap="large")
         
@@ -605,7 +859,6 @@ with tab2:
 
         with col_view:
             st.markdown("##### Destinations to Visualize")
-            # REPLACED "Pills" with standard Multiselect to remove the weird artifact
             view_selection = st.pills(
                 "Select Flows:",
                 options=["Industry Sectors", "Geography"],
@@ -619,7 +872,7 @@ with tab2:
 
     st.divider()
 
-    # 3. FILTERING LOGIC
+    # FILTERING LOGIC
     mask_flow = (flow_df['Degree Label'].isin(selected_degrees)) & \
                 (flow_df['Major Name'].isin(selected_majors))
     
@@ -631,7 +884,7 @@ with tab2:
     filtered_flow = flow_df[mask_flow].copy()
     flow_col = f'{time_code}_flow'
 
-    # 4. VIEW LOGIC
+    # VIEW LOGIC
     if filtered_flow.empty:
         st.info("No data available for the selected filters.")
     else:
@@ -671,7 +924,7 @@ with tab2:
 
             sankey_data = pd.DataFrame(summary_rows)
 
-        # 5. AGGREGATION & COLORING
+        # AGGREGATION & COLORING
         if sankey_data.empty:
              st.warning("No flow data found for this selection.")
              st.stop()
@@ -679,7 +932,7 @@ with tab2:
         agg_flow = sankey_data.groupby(['source_node', 'target_node'])[flow_col].sum().reset_index()
         agg_flow = agg_flow[agg_flow[flow_col] > 0] 
 
-        # 6. NODE LOGIC: ROBUST LAYERED SORTING
+
         # Calculate totals for sizing
         node_totals = {}
         for _, row in agg_flow.iterrows():
@@ -693,8 +946,7 @@ with tab2:
         if total_cohort_count == 0:
             total_cohort_count = agg_flow[flow_col].sum()
 
-        # --- FIX: STRICT LAYERED SORTING ---
-        # 1. Identify "Levels" (Columns in the diagram)
+        # Identify "Levels" (Columns in the diagram)
         sources = set(agg_flow['source_node'])
         targets = set(agg_flow['target_node'])
         
@@ -707,20 +959,19 @@ with tab2:
         # Level 2: Leaves (End Points -> Geos, NME, or Industries in single flow)
         level_2 = list(targets - sources) 
         
-        # 2. Sort Each Level DESCENDING by Magnitude
+        # Sort Each Level DESCENDING by Magnitude
         def get_magnitude(n): return node_totals.get(n, 0)
         
         level_0.sort(key=get_magnitude, reverse=True)
         level_1.sort(key=get_magnitude, reverse=True)
         level_2.sort(key=get_magnitude, reverse=True)
         
-        # 3. Combine in strict order: Left -> Middle -> Right
+        # Combine in strict order: Left -> Middle -> Right
         # This ensures Index 0 is Top-Left, and forces the layout engine to respect the order
         all_nodes = level_0 + level_1 + level_2
         
-        # 4. Create Map
+        # Create Map
         node_map = {label: i for i, label in enumerate(all_nodes)}
-        # --- FIX END ---
 
         # COLOR PALETTE
         palette = [
@@ -807,17 +1058,15 @@ with tab2:
             """, unsafe_allow_html=True
         )
 
-        # RENDER CHART (Clean, no CSS wrapper to avoid the "bulge")
+        # RENDER CHART
         st.plotly_chart(
             fig_sankey, 
             use_container_width=True,
-            config={'displayModeBar': False} # Removes the floating toolbar on hover
+            config={'displayModeBar': False}
         )
         
-        # 8. DATA TABLE
+        # DATA TABLE
         with st.expander("📄 View Underlying Data"):
-            # ... (Keep your existing data table code here)
             display_df = agg_flow.rename(columns={flow_col: "Count"})
-            # Safe percentage calculation
             display_df['Percentage'] = display_df.apply(lambda x: f"{(x['Count'] / node_totals.get(x['source_node'], 1)*100):.1f}%", axis=1)
             st.dataframe(display_df, use_container_width=True)
