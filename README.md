@@ -4,10 +4,16 @@ This dashboard visualizes earnings and flow outcomes for Education and Computer 
 
 ## Running the Dashboard
 
-1. Install the required dependencies:
+### Method 1: Clone and Run
+1. Clone the repository:
+`git clone https://github.com/anubhavdhungana/PSEO_Research.git`
+2. Install the required dependencies:
 `pip install -r requirements.txt`
-2. Run the application:
+3. Run the application:
 `streamlit run app.py`
+
+### Method 2: Use Streamlit Cloud
+1. Access the app at https://pseoresearch-ldtdxel35fbkurmpkwpmpv.streamlit.app/
 
 ## Methodology
 
