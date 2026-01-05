@@ -684,8 +684,8 @@ with tab1:
     # --- 11. TOP 10 SCHOOLS BY MAJOR ---
     # ==========================================
     st.divider()
-    st.header("🏆 Top 10 Performing Institutions")
-    st.markdown("Comparing the highest earners across specific degrees and milestones.")
+    st.header("Top 10 Performing Institutions")
+    st.markdown("Comparing the highest earners across specific degrees and milestones. Reads only the cohort data from the sidebar.")
 
     # LOCAL CONTROLS (Shared by both figures)
     top_col1, top_col2, top_col3 = st.columns(3)
@@ -750,7 +750,7 @@ with tab1:
             st.info(f"No data available for Top 10 in {major_name} with the selected filters.")
             return
 
-        st.subheader(f"🚀 Top 10 Schools: {major_name}")
+        st.subheader(f"Top 10 Schools: {major_name}")
         
         # Use 'institution' and the metric for the bar chart
         fig = px.bar(
