@@ -549,7 +549,7 @@ with tab1:
     # --- 10. LONGITUDINAL HISTORICAL TRENDS ---
     # ==========================================
     st.divider()
-    st.subheader("⏳ Historical Trends: Longitudinal Earnings Series")
+    st.subheader("Historical Trends")
     st.markdown("Track the specific performance of degrees across cohorts and post-graduation milestones.")
 
     # CHART-SPECIFIC CONTROLS
@@ -576,7 +576,7 @@ with tab1:
         st.warning("Please select at least one timeframe to visualize.")
     else:
         # DATA LOADING & CLEANING
-        if selected_inst == "National (State) Average":
+        if selected_inst == "National Average":
             h_raw = load_data("Trends")
             h_raw['Cohort Label'] = h_raw['Cohort Group']
         else:
